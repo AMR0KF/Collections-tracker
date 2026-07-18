@@ -1,0 +1,6 @@
+{
+  "name": "Collections Tracker",
+  "description": "A comprehensive, offline-first mobile application to manage relationships, track billing frequencies, record collections, and analyze cash flows.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
