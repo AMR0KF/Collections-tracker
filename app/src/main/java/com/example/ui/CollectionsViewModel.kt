@@ -9,6 +9,9 @@ import com.example.data.*
 import com.example.sync.SyncManager
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
 
 sealed class Screen {
     object Dashboard : Screen()
@@ -222,6 +225,201 @@ class CollectionsViewModel(
     fun deleteCashTransaction(id: String) {
         viewModelScope.launch {
             repository.deleteCashTransaction(id)
+        }
+    }
+
+    // --- Export & Backup Utilities ---
+    suspend fun generateCashBoxCsv(): String {
+        val txs = repository.getAllCashTransactionsDirect()
+        val sdf = SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.getDefault())
+        val sb = StringBuilder()
+        sb.append("ID,Date,Type,Category,Amount,Description,RelatedPaymentID\n")
+        txs.forEach { tx ->
+            val dateStr = sdf.format(Date(tx.date))
+            val descEsc = (tx.description ?: "").replace("\"", "\"\"")
+            sb.append("\"${tx.id}\",\"$dateStr\",\"${tx.type}\",\"${tx.category}\",${tx.amount},\"$descEsc\",\"${tx.relatedPaymentId ?: ""}\"\n")
+        }
+        return sb.toString()
+    }
+
+    suspend fun generateCollectionsCsv(): String {
+        val payersList = payers.value
+        val itemsList = collectionItems.value
+        val paymentsList = paymentRecords.value
+        val sdf = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault())
+        val sb = StringBuilder()
+        sb.append("Payer Name,Phone,Item Title,Type,Frequency,Amount,Start Date,End Date,Total Paid\n")
+
+        payersList.forEach { payer ->
+            val payerItems = itemsList.filter { it.payerId == payer.id }
+            if (payerItems.isEmpty()) {
+                val nameEsc = payer.name.replace("\"", "\"\"")
+                val phoneEsc = (payer.phone ?: "").replace("\"", "\"\"")
+                sb.append("\"$nameEsc\",\"$phoneEsc\",\"N/A\",\"N/A\",\"N/A\",0, \"N/A\",\"N/A\",0\n")
+            } else {
+                payerItems.forEach { item ->
+                    val nameEsc = payer.name.replace("\"", "\"\"")
+                    val phoneEsc = (payer.phone ?: "").replace("\"", "\"\"")
+                    val titleEsc = (item.customTypeLabel ?: item.type).replace("\"", "\"\"")
+                    val startStr = sdf.format(Date(item.startDate))
+                    val endStr = item.endDate?.let { sdf.format(Date(it)) } ?: "N/A"
+                    val itemPaid = paymentsList.filter { it.collectionItemId == item.id }.sumOf { it.amount }
+                    sb.append("\"$nameEsc\",\"$phoneEsc\",\"$titleEsc\",\"${item.type}\",\"${item.frequency}\",${item.amount},\"$startStr\",\"$endStr\",$itemPaid\n")
+                }
+            }
+        }
+        return sb.toString()
+    }
+
+    suspend fun generateFullBackupJson(): String {
+        val root = org.json.JSONObject()
+
+        val payersArray = org.json.JSONArray()
+        payers.value.forEach { p ->
+            val pObj = org.json.JSONObject()
+            pObj.put("id", p.id)
+            pObj.put("name", p.name)
+            pObj.put("phone", p.phone)
+            pObj.put("notes", p.notes)
+            pObj.put("createdAt", p.createdAt)
+            pObj.put("updatedAt", p.updatedAt)
+            payersArray.put(pObj)
+        }
+        root.put("payers", payersArray)
+
+        val itemsArray = org.json.JSONArray()
+        collectionItems.value.forEach { item ->
+            val iObj = org.json.JSONObject()
+            iObj.put("id", item.id)
+            iObj.put("payerId", item.payerId)
+            iObj.put("type", item.type)
+            iObj.put("customTypeLabel", item.customTypeLabel)
+            iObj.put("amount", item.amount)
+            iObj.put("frequency", item.frequency)
+            iObj.put("intervalDays", item.intervalDays)
+            iObj.put("startDate", item.startDate)
+            iObj.put("endDate", item.endDate)
+            iObj.put("createdAt", item.createdAt)
+            iObj.put("updatedAt", item.updatedAt)
+            itemsArray.put(iObj)
+        }
+        root.put("collectionItems", itemsArray)
+
+        val paymentsArray = org.json.JSONArray()
+        paymentRecords.value.forEach { pr ->
+            val prObj = org.json.JSONObject()
+            prObj.put("id", pr.id)
+            prObj.put("collectionItemId", pr.collectionItemId)
+            prObj.put("cycleIndex", pr.cycleIndex)
+            prObj.put("amount", pr.amount)
+            prObj.put("date", pr.date)
+            prObj.put("method", pr.method)
+            prObj.put("notes", pr.notes)
+            prObj.put("createdAt", pr.createdAt)
+            prObj.put("updatedAt", pr.updatedAt)
+            paymentsArray.put(prObj)
+        }
+        root.put("paymentRecords", paymentsArray)
+
+        val cashArray = org.json.JSONArray()
+        repository.getAllCashTransactionsDirect().forEach { tx ->
+            val cObj = org.json.JSONObject()
+            cObj.put("id", tx.id)
+            cObj.put("type", tx.type)
+            cObj.put("amount", tx.amount)
+            cObj.put("category", tx.category)
+            cObj.put("description", tx.description)
+            cObj.put("date", tx.date)
+            cObj.put("relatedPaymentId", tx.relatedPaymentId)
+            cObj.put("createdAt", tx.createdAt)
+            cObj.put("updatedAt", tx.updatedAt)
+            cashArray.put(cObj)
+        }
+        root.put("cashTransactions", cashArray)
+
+        return root.toString(2)
+    }
+
+    fun restoreFullBackupJson(jsonStr: String, onResult: (Boolean) -> Unit) {
+        viewModelScope.launch {
+            try {
+                val root = org.json.JSONObject(jsonStr)
+                if (root.has("payers")) {
+                    val payersArray = root.getJSONArray("payers")
+                    for (i in 0 until payersArray.length()) {
+                        val pObj = payersArray.getJSONObject(i)
+                        val payer = Payer(
+                            id = pObj.getString("id"),
+                            name = pObj.getString("name"),
+                            phone = if (pObj.isNull("phone")) null else pObj.getString("phone"),
+                            notes = if (pObj.isNull("notes")) null else pObj.getString("notes"),
+                            createdAt = pObj.getLong("createdAt"),
+                            updatedAt = pObj.getLong("updatedAt")
+                        )
+                        repository.insertPayer(payer)
+                    }
+                }
+                if (root.has("collectionItems")) {
+                    val itemsArray = root.getJSONArray("collectionItems")
+                    for (i in 0 until itemsArray.length()) {
+                        val iObj = itemsArray.getJSONObject(i)
+                        val item = CollectionItem(
+                            id = iObj.getString("id"),
+                            payerId = iObj.getString("payerId"),
+                            type = iObj.getString("type"),
+                            customTypeLabel = if (iObj.isNull("customTypeLabel")) null else iObj.getString("customTypeLabel"),
+                            amount = iObj.getDouble("amount"),
+                            frequency = iObj.getString("frequency"),
+                            intervalDays = if (iObj.isNull("intervalDays")) null else iObj.getInt("intervalDays"),
+                            startDate = iObj.getLong("startDate"),
+                            endDate = if (iObj.isNull("endDate")) null else iObj.getLong("endDate"),
+                            createdAt = iObj.getLong("createdAt"),
+                            updatedAt = iObj.getLong("updatedAt")
+                        )
+                        repository.insertCollectionItem(item)
+                    }
+                }
+                if (root.has("paymentRecords")) {
+                    val paymentsArray = root.getJSONArray("paymentRecords")
+                    for (i in 0 until paymentsArray.length()) {
+                        val prObj = paymentsArray.getJSONObject(i)
+                        val pr = PaymentRecord(
+                            id = prObj.getString("id"),
+                            collectionItemId = prObj.getString("collectionItemId"),
+                            cycleIndex = prObj.getInt("cycleIndex"),
+                            amount = prObj.getDouble("amount"),
+                            date = prObj.getLong("date"),
+                            method = prObj.getString("method"),
+                            notes = if (prObj.isNull("notes")) null else prObj.getString("notes"),
+                            createdAt = prObj.getLong("createdAt"),
+                            updatedAt = prObj.getLong("updatedAt")
+                        )
+                        repository.insertPaymentRecord(pr, enqueue = false)
+                    }
+                }
+                if (root.has("cashTransactions")) {
+                    val cashArray = root.getJSONArray("cashTransactions")
+                    for (i in 0 until cashArray.length()) {
+                        val cObj = cashArray.getJSONObject(i)
+                        val tx = CashTransaction(
+                            id = cObj.getString("id"),
+                            type = cObj.getString("type"),
+                            amount = cObj.getDouble("amount"),
+                            category = cObj.getString("category"),
+                            description = if (cObj.isNull("description")) null else cObj.getString("description"),
+                            date = cObj.getLong("date"),
+                            relatedPaymentId = if (cObj.isNull("relatedPaymentId")) null else cObj.getString("relatedPaymentId"),
+                            createdAt = cObj.getLong("createdAt"),
+                            updatedAt = cObj.getLong("updatedAt")
+                        )
+                        repository.insertCashTransaction(tx)
+                    }
+                }
+                onResult(true)
+            } catch (e: Exception) {
+                e.printStackTrace()
+                onResult(false)
+            }
         }
     }
 

@@ -40,6 +40,16 @@ import com.example.engine.CycleWithStatus
 import com.example.sync.SyncManager
 import java.text.SimpleDateFormat
 import java.util.*
+import kotlinx.coroutines.launch
+
+fun shareTextContent(context: android.content.Context, title: String, content: String, mimeType: String = "text/plain") {
+    val shareIntent = Intent(Intent.ACTION_SEND).apply {
+        type = mimeType
+        putExtra(Intent.EXTRA_SUBJECT, title)
+        putExtra(Intent.EXTRA_TEXT, content)
+    }
+    context.startActivity(Intent.createChooser(shareIntent, title))
+}
 
 @Composable
 fun CollectionsUi(viewModel: CollectionsViewModel) {
@@ -659,6 +669,164 @@ fun SettingsScreen(viewModel: CollectionsViewModel) {
                 }
             }
 
+            // Backup, Restore & Cloud Storage Card
+            item {
+                val context = LocalContext.current
+                val coroutineScope = rememberCoroutineScope()
+                var showRestoreDialog by remember { mutableStateOf(false) }
+                var restoreJsonInput by remember { mutableStateOf("") }
+                var restoreStatusMessage by remember { mutableStateOf<String?>(null) }
+
+                Card(
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(20.dp),
+                    colors = CardDefaults.cardColors(
+                        containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f)
+                    )
+                ) {
+                    Column(
+                        modifier = Modifier.padding(16.dp),
+                        verticalArrangement = Arrangement.spacedBy(12.dp)
+                    ) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            Icon(
+                                Icons.Default.CloudUpload,
+                                contentDescription = "Cloud & Backup Icon",
+                                tint = MaterialTheme.colorScheme.primary
+                            )
+                            Text(
+                                Translations.getString("backup_restore_title", lang),
+                                fontWeight = FontWeight.Bold,
+                                style = MaterialTheme.typography.titleMedium
+                            )
+                        }
+
+                        Text(
+                            text = Translations.getString("offline_storage_info", lang),
+                            fontSize = 12.sp,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+
+                        Text(
+                            text = Translations.getString("cloud_storage_info", lang),
+                            fontSize = 12.sp,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            fontWeight = FontWeight.Medium
+                        )
+
+                        Spacer(modifier = Modifier.height(4.dp))
+
+                        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                            // Export Cash Box CSV Button
+                            Button(
+                                onClick = {
+                                    coroutineScope.launch {
+                                        val csv = viewModel.generateCashBoxCsv()
+                                        shareTextContent(context, Translations.getString("export_cash_box_csv", lang), csv, "text/csv")
+                                    }
+                                },
+                                modifier = Modifier.fillMaxWidth().testTag("export_cash_csv_button"),
+                                shape = RoundedCornerShape(12.dp),
+                                colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.secondaryContainer, contentColor = MaterialTheme.colorScheme.onSecondaryContainer)
+                            ) {
+                                Icon(Icons.Default.Download, contentDescription = null, modifier = Modifier.size(18.dp))
+                                Spacer(modifier = Modifier.width(8.dp))
+                                Text(Translations.getString("export_cash_box_csv", lang), fontWeight = FontWeight.Bold)
+                            }
+
+                            // Export Collections CSV Button
+                            Button(
+                                onClick = {
+                                    coroutineScope.launch {
+                                        val csv = viewModel.generateCollectionsCsv()
+                                        shareTextContent(context, Translations.getString("export_collections_csv", lang), csv, "text/csv")
+                                    }
+                                },
+                                modifier = Modifier.fillMaxWidth().testTag("export_collections_csv_button"),
+                                shape = RoundedCornerShape(12.dp),
+                                colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.secondaryContainer, contentColor = MaterialTheme.colorScheme.onSecondaryContainer)
+                            ) {
+                                Icon(Icons.Default.Download, contentDescription = null, modifier = Modifier.size(18.dp))
+                                Spacer(modifier = Modifier.width(8.dp))
+                                Text(Translations.getString("export_collections_csv", lang), fontWeight = FontWeight.Bold)
+                            }
+
+                            // Export Full JSON Backup Button
+                            Button(
+                                onClick = {
+                                    coroutineScope.launch {
+                                        val json = viewModel.generateFullBackupJson()
+                                        shareTextContent(context, Translations.getString("backup_json", lang), json, "application/json")
+                                    }
+                                },
+                                modifier = Modifier.fillMaxWidth().testTag("export_json_backup_button"),
+                                shape = RoundedCornerShape(12.dp)
+                            ) {
+                                Icon(Icons.Default.Share, contentDescription = null, modifier = Modifier.size(18.dp))
+                                Spacer(modifier = Modifier.width(8.dp))
+                                Text(Translations.getString("backup_json", lang), fontWeight = FontWeight.Bold)
+                            }
+
+                            // Restore Full JSON Backup Button
+                            OutlinedButton(
+                                onClick = { showRestoreDialog = true },
+                                modifier = Modifier.fillMaxWidth().testTag("restore_json_backup_button"),
+                                shape = RoundedCornerShape(12.dp)
+                            ) {
+                                Icon(Icons.Default.Upload, contentDescription = null, modifier = Modifier.size(18.dp))
+                                Spacer(modifier = Modifier.width(8.dp))
+                                Text(Translations.getString("restore_json", lang), fontWeight = FontWeight.Bold)
+                            }
+                        }
+                    }
+                }
+
+                if (showRestoreDialog) {
+                    AlertDialog(
+                        onDismissRequest = { showRestoreDialog = false },
+                        title = { Text(Translations.getString("restore_json", lang), fontWeight = FontWeight.Bold) },
+                        text = {
+                            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                                Text(if (lang == "ar") "قم بلصق نص النسخة الاحتياطية (JSON) أدناه للاستعادة:" else "Paste your backup JSON text below to restore data:", fontSize = 12.sp)
+                                OutlinedTextField(
+                                    value = restoreJsonInput,
+                                    onValueChange = { restoreJsonInput = it },
+                                    modifier = Modifier.fillMaxWidth().height(150.dp),
+                                    maxLines = 10,
+                                    shape = RoundedCornerShape(8.dp)
+                                )
+                                restoreStatusMessage?.let { msg ->
+                                    Text(msg, fontSize = 12.sp, color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.Bold)
+                                }
+                            }
+                        },
+                        confirmButton = {
+                            Button(
+                                onClick = {
+                                    viewModel.restoreFullBackupJson(restoreJsonInput) { success ->
+                                        if (success) {
+                                            restoreStatusMessage = if (lang == "ar") "تمت الاستعادة بنجاح!" else "Backup restored successfully!"
+                                        } else {
+                                            restoreStatusMessage = if (lang == "ar") "خطأ: تعذر تحليل بيانات النسخة الاحتياطية." else "Error: Failed to parse backup payload."
+                                        }
+                                    }
+                                }
+                            ) {
+                                Text(if (lang == "ar") "استعادة" else "Restore")
+                            }
+                        },
+                        dismissButton = {
+                            TextButton(onClick = { showRestoreDialog = false }) {
+                                Text(Translations.getString("cancel", lang))
+                            }
+                        }
+                    )
+                }
+            }
+
             item {
                 Spacer(modifier = Modifier.height(32.dp))
             }
@@ -672,13 +840,67 @@ fun SettingsScreen(viewModel: CollectionsViewModel) {
 fun CashBoxScreen(viewModel: CollectionsViewModel) {
     val lang by viewModel.currentLanguage.collectAsStateWithLifecycle()
     val transactions by viewModel.cashTransactions.collectAsStateWithLifecycle()
+    val context = LocalContext.current
+    val coroutineScope = rememberCoroutineScope()
 
     var showAddDialog by remember { mutableStateOf(false) }
 
+    // Filter states
+    var dateFilter by remember { mutableStateOf("all") } // "all", "today", "week", "month"
+    var typeFilter by remember { mutableStateOf("all") } // "all", "in", "out"
+    var categoryFilter by remember { mutableStateOf("all") } // "all" or specific category string
+
+    val now = System.currentTimeMillis()
+    val startOfToday = remember(now) {
+        val cal = Calendar.getInstance()
+        cal.set(Calendar.HOUR_OF_DAY, 0)
+        cal.set(Calendar.MINUTE, 0)
+        cal.set(Calendar.SECOND, 0)
+        cal.set(Calendar.MILLISECOND, 0)
+        cal.timeInMillis
+    }
+    val startOfWeek = remember(now) {
+        val cal = Calendar.getInstance()
+        cal.set(Calendar.DAY_OF_WEEK, cal.firstDayOfWeek)
+        cal.set(Calendar.HOUR_OF_DAY, 0)
+        cal.set(Calendar.MINUTE, 0)
+        cal.set(Calendar.SECOND, 0)
+        cal.set(Calendar.MILLISECOND, 0)
+        cal.timeInMillis
+    }
+    val startOfMonth = remember(now) {
+        val cal = Calendar.getInstance()
+        cal.set(Calendar.DAY_OF_MONTH, 1)
+        cal.set(Calendar.HOUR_OF_DAY, 0)
+        cal.set(Calendar.MINUTE, 0)
+        cal.set(Calendar.SECOND, 0)
+        cal.set(Calendar.MILLISECOND, 0)
+        cal.timeInMillis
+    }
+
+    // Filtered transaction list
+    val filteredTransactions = remember(transactions, dateFilter, typeFilter, categoryFilter) {
+        transactions.filter { tx ->
+            val matchesDate = when (dateFilter) {
+                "today" -> tx.date >= startOfToday
+                "week" -> tx.date >= startOfWeek
+                "month" -> tx.date >= startOfMonth
+                else -> true
+            }
+            val matchesType = when (typeFilter) {
+                "in" -> tx.type == "in"
+                "out" -> tx.type == "out"
+                else -> true
+            }
+            val matchesCategory = if (categoryFilter == "all") true else tx.category == categoryFilter
+            matchesDate && matchesType && matchesCategory
+        }
+    }
+
     // Calculate totals
-    val totalIn = transactions.filter { it.type == "in" }.sumOf { it.amount }
-    val totalOut = transactions.filter { it.type == "out" }.sumOf { it.amount }
-    val balance = totalIn - totalOut
+    val totalIn = filteredTransactions.filter { it.type == "in" }.sumOf { it.amount }
+    val totalOut = filteredTransactions.filter { it.type == "out" }.sumOf { it.amount }
+    val overallBalance = transactions.filter { it.type == "in" }.sumOf { it.amount } - transactions.filter { it.type == "out" }.sumOf { it.amount }
 
     Scaffold(
         topBar = {
@@ -689,6 +911,23 @@ fun CashBoxScreen(viewModel: CollectionsViewModel) {
                         fontWeight = FontWeight.Bold,
                         fontSize = 24.sp
                     )
+                },
+                actions = {
+                    IconButton(
+                        onClick = {
+                            coroutineScope.launch {
+                                val csv = viewModel.generateCashBoxCsv()
+                                shareTextContent(context, Translations.getString("export_cash_box_csv", lang), csv, "text/csv")
+                            }
+                        },
+                        modifier = Modifier.testTag("export_cash_box_top_icon")
+                    ) {
+                        Icon(
+                            Icons.Default.Download,
+                            contentDescription = "Export CSV",
+                            tint = MaterialTheme.colorScheme.primary
+                        )
+                    }
                 },
                 colors = TopAppBarDefaults.largeTopAppBarColors(
                     containerColor = MaterialTheme.colorScheme.background
@@ -743,7 +982,7 @@ fun CashBoxScreen(viewModel: CollectionsViewModel) {
                         )
                         Spacer(modifier = Modifier.height(4.dp))
                         Text(
-                            text = String.format("$ %,.2f", balance),
+                            text = String.format("$ %,.2f", overallBalance),
                             fontSize = 36.sp,
                             fontWeight = FontWeight.ExtraBold,
                             color = MaterialTheme.colorScheme.onPrimaryContainer
@@ -752,7 +991,7 @@ fun CashBoxScreen(viewModel: CollectionsViewModel) {
                 }
             }
 
-            // Small side-by-side cards for total in / total out
+            // Small side-by-side cards for total in / total out (reflecting filtered)
             item {
                 Row(
                     modifier = Modifier.fillMaxWidth(),
@@ -814,18 +1053,72 @@ fun CashBoxScreen(viewModel: CollectionsViewModel) {
                 }
             }
 
-            // Ledger List Section Header
+            // Filters Section (Date Range & Category)
             item {
-                Text(
-                    text = Translations.getString("cash_box_ledger", lang),
-                    fontWeight = FontWeight.Bold,
-                    fontSize = 18.sp,
-                    color = MaterialTheme.colorScheme.onBackground,
-                    modifier = Modifier.padding(vertical = 4.dp)
-                )
+                Column(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    // Date Filter Row
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                    ) {
+                        listOf("all", "today", "week", "month").forEach { rangeKey ->
+                            val label = Translations.getString("date_filter_$rangeKey", lang)
+                            FilterChip(
+                                selected = dateFilter == rangeKey,
+                                onClick = { dateFilter = rangeKey },
+                                label = { Text(label, fontSize = 11.sp, fontWeight = FontWeight.Bold) },
+                                shape = RoundedCornerShape(10.dp)
+                            )
+                        }
+                    }
+
+                    // Type & Category Filter Row
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                    ) {
+                        listOf("all", "in", "out").forEach { typeKey ->
+                            val label = when (typeKey) {
+                                "in" -> Translations.getString("cash_in", lang)
+                                "out" -> Translations.getString("paid_out", lang)
+                                else -> Translations.getString("all_categories", lang)
+                            }
+                            FilterChip(
+                                selected = typeFilter == typeKey,
+                                onClick = { typeFilter = typeKey },
+                                label = { Text(label, fontSize = 11.sp, fontWeight = FontWeight.SemiBold) },
+                                shape = RoundedCornerShape(10.dp)
+                            )
+                        }
+                    }
+                }
             }
 
-            if (transactions.isEmpty()) {
+            // Ledger List Section Header
+            item {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        text = Translations.getString("cash_box_ledger", lang),
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 18.sp,
+                        color = MaterialTheme.colorScheme.onBackground
+                    )
+                    Text(
+                        text = "${filteredTransactions.size} " + if (lang == "ar") "حركات" else "entries",
+                        fontSize = 12.sp,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+            }
+
+            if (filteredTransactions.isEmpty()) {
                 item {
                     Box(
                         modifier = Modifier
@@ -841,7 +1134,7 @@ fun CashBoxScreen(viewModel: CollectionsViewModel) {
                     }
                 }
             } else {
-                items(transactions, key = { it.id }) { tx ->
+                items(filteredTransactions, key = { it.id }) { tx ->
                     CashTransactionRow(
                         transaction = tx,
                         lang = lang,
@@ -1703,6 +1996,8 @@ fun PayerDetailScreen(viewModel: CollectionsViewModel, payerId: String) {
                 items(payerItems, key = { it.id }) { item ->
                     CollectionItemCard(
                         item = item,
+                        payerName = payer.name,
+                        payerPhone = payer.phone,
                         payments = paymentsList,
                         currentTime = currentTime,
                         onDeleteClick = { viewModel.deleteCollectionItem(item.id) },
@@ -1778,9 +2073,60 @@ fun PayerDetailScreen(viewModel: CollectionsViewModel, payerId: String) {
     }
 }
 
+fun shareWhatsAppReceipt(
+    context: android.content.Context,
+    payerName: String,
+    itemTitle: String,
+    cycleIndex: Int,
+    amount: Double,
+    method: String,
+    dateMs: Long,
+    lang: String,
+    payerPhone: String? = null
+) {
+    val sdf = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault())
+    val formattedDate = sdf.format(Date(dateMs))
+    val titleHeader = Translations.getString("whatsapp_receipt_title", lang)
+
+    val msg = StringBuilder()
+        .append(titleHeader).append("\n")
+        .append("--------------------------------\n")
+        .append(if (lang == "ar") "الدافع: " else "Payer: ").append(payerName.ifEmpty { "N/A" }).append("\n")
+        .append(if (lang == "ar") "البند: " else "Item: ").append(itemTitle).append(" (#").append(cycleIndex + 1).append(")\n")
+        .append(if (lang == "ar") "المبلغ المدفوع: " else "Amount Paid: ").append(String.format("$%,.2f", amount)).append("\n")
+        .append(if (lang == "ar") "طريقة الدفع: " else "Method: ").append(method).append("\n")
+        .append(if (lang == "ar") "التاريخ: " else "Date: ").append(formattedDate).append("\n")
+        .append("--------------------------------\n")
+        .append(if (lang == "ar") "شكرًا لك!" else "Thank you!")
+        .toString()
+
+    val cleanPhone = payerPhone?.replace("[^0-9]".toRegex(), "") ?: ""
+    val uriStr = if (cleanPhone.isNotEmpty()) {
+        "https://api.whatsapp.com/send?phone=$cleanPhone&text=" + java.net.URLEncoder.encode(msg, "UTF-8")
+    } else {
+        "https://api.whatsapp.com/send?text=" + java.net.URLEncoder.encode(msg, "UTF-8")
+    }
+
+    val intent = android.content.Intent(android.content.Intent.ACTION_VIEW).apply {
+        data = android.net.Uri.parse(uriStr)
+    }
+
+    try {
+        context.startActivity(intent)
+    } catch (e: Exception) {
+        val shareIntent = android.content.Intent(android.content.Intent.ACTION_SEND).apply {
+            type = "text/plain"
+            putExtra(android.content.Intent.EXTRA_TEXT, msg)
+        }
+        context.startActivity(android.content.Intent.createChooser(shareIntent, Translations.getString("whatsapp_receipt_beta", lang)))
+    }
+}
+
 @Composable
 fun CollectionItemCard(
     item: CollectionItem,
+    payerName: String = "",
+    payerPhone: String? = null,
     payments: List<PaymentRecord>,
     currentTime: Long,
     onDeleteClick: () -> Unit,
@@ -1927,6 +2273,9 @@ fun CollectionItemCard(
                     cycles.forEach { cycleWithStatus ->
                         CycleRow(
                             cycleWithStatus = cycleWithStatus,
+                            payerName = payerName,
+                            payerPhone = payerPhone,
+                            itemTitle = title,
                             onRecordPaymentClick = {
                                 val unpaid = cycleWithStatus.cycle.expectedAmount - cycleWithStatus.paidAmount
                                 onRecordPaymentClick(cycleWithStatus.cycle.index, unpaid)
@@ -1943,9 +2292,13 @@ fun CollectionItemCard(
 @Composable
 fun CycleRow(
     cycleWithStatus: CycleWithStatus,
+    payerName: String = "",
+    payerPhone: String? = null,
+    itemTitle: String = "",
     onRecordPaymentClick: () -> Unit,
     onDeletePaymentClick: (paymentId: String) -> Unit
 ) {
+    val context = LocalContext.current
     val isRtl = androidx.compose.ui.platform.LocalLayoutDirection.current == androidx.compose.ui.unit.LayoutDirection.Rtl
     val lang = if (isRtl) "ar" else "en"
 
@@ -2034,6 +2387,13 @@ fun CycleRow(
                 ) {
                     Text(Translations.getString("payments_history", lang), fontSize = 10.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     cycleWithStatus.payments.forEach { payRec ->
+                        val methodKey = payRec.method.lowercase().replace(" ", "_")
+                        val translatedMethod = try {
+                            Translations.getString(methodKey, lang)
+                        } catch (e: Exception) {
+                            payRec.method
+                        }
+
                         Row(
                             verticalAlignment = Alignment.CenterVertically,
                             modifier = Modifier
@@ -2045,12 +2405,6 @@ fun CycleRow(
                             Icon(Icons.Default.Payment, contentDescription = "Payment record Icon", modifier = Modifier.size(10.dp))
                             Spacer(modifier = Modifier.width(4.dp))
                             Column(modifier = Modifier.weight(1f)) {
-                                val methodKey = payRec.method.lowercase().replace(" ", "_")
-                                val translatedMethod = try {
-                                    Translations.getString(methodKey, lang)
-                                } catch (e: Exception) {
-                                    payRec.method
-                                }
                                 Text(
                                     Translations.getString("payment_via", lang, String.format("$%,.2f", payRec.amount), translatedMethod),
                                     fontSize = 11.sp,
@@ -2060,6 +2414,32 @@ fun CycleRow(
                                     Text(payRec.notes, fontSize = 9.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
                                 }
                             }
+
+                            // WhatsApp Share Receipt Button (Beta)
+                            IconButton(
+                                onClick = {
+                                    shareWhatsAppReceipt(
+                                        context = context,
+                                        payerName = payerName,
+                                        itemTitle = itemTitle,
+                                        cycleIndex = cycle.index,
+                                        amount = payRec.amount,
+                                        method = translatedMethod,
+                                        dateMs = payRec.date,
+                                        lang = lang,
+                                        payerPhone = payerPhone
+                                    )
+                                },
+                                modifier = Modifier.size(24.dp).testTag("whatsapp_receipt_beta_btn")
+                            ) {
+                                Icon(
+                                    Icons.Default.Share,
+                                    contentDescription = Translations.getString("whatsapp_receipt_beta", lang),
+                                    tint = Color(0xFF25D366),
+                                    modifier = Modifier.size(14.dp)
+                                )
+                            }
+
                             IconButton(
                                 onClick = { onDeletePaymentClick(payRec.id) },
                                 modifier = Modifier.size(20.dp)
