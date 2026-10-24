@@ -1,4 +1,4 @@
-﻿# Collections Tracker — Android Subscription & Cash Ledger
+# Collections Tracker — Android Subscription & Cash Ledger
 
 > Modern, offline-first native Android application built with Kotlin, Jetpack Compose (Material 3), Room SQLite, and a custom financial cycle engine for recurring collections and cash flow tracking.
 
@@ -8,9 +8,9 @@
 
 Collections Tracker is engineered as an offline-first financial tool for tracking recurring receivables, tenant rent, installment plans, and petty cash ledgers with zero latency.
 
-`
+```text
 ┌────────────────────────────────────────────────────────┐
-│               Jetpack Compose UI (M3)                 │
+│               Jetpack Compose UI (M3)                  │
 │         (Reactive State & ViewModels via Flow)         │
 └──────────────────────────┬─────────────────────────────┘
                            │
@@ -35,7 +35,7 @@ Collections Tracker is engineered as an offline-first financial tool for trackin
 │   AndroidX Room (SQLite)│ │       SyncManager           │
 │   Foreign Keys & Index  │ │ (FIFO Sync Queue for Cloud) │
 └─────────────────────────┘ └─────────────────────────────┘
-`
+```
 
 ---
 
@@ -51,10 +51,10 @@ Collections Tracker is engineered as an offline-first financial tool for trackin
 
 ### 📶 Offline-First Resiliency
 - **Local SQLite via Room**: Instantaneous response time, full transactional integrity with foreign key cascades and indices.
-- **FIFO Sync Queue**: Mutations write to an append-only sync_queue table for conflict-free background synchronization.
+- **FIFO Sync Queue**: Mutations write to an append-only `sync_queue` table for conflict-free background synchronization.
 
 ### 🌐 Multi-Language & Modern UX
-- Native multi-lingual localization support (Translations.kt).
+- Native multi-lingual localization support (`Translations.kt`).
 - Material 3 theming with dynamic dark mode and edge-to-edge layout styling.
 
 ### 🧪 Automated Testing
@@ -85,7 +85,7 @@ Collections Tracker is engineered as an offline-first financial tool for trackin
 
 ### 2. Building from Source
 
-`ash
+```bash
 # Clone the repository
 git clone https://github.com/AMR0KF/Collections-tracker.git
 cd Collections-tracker
@@ -95,13 +95,13 @@ cd Collections-tracker
 
 # Run unit and screenshot tests
 ./gradlew testDebugUnitTest
-`
+```
 
 ---
 
 ## Project Structure
 
-`
+```text
 Collections-tracker/
 ├── app/
 │   ├── src/
@@ -120,7 +120,7 @@ Collections-tracker/
 ├── gradle/                         # Gradle wrapper and version catalog
 ├── build.gradle.kts                # Root build configuration
 └── settings.gradle.kts             # Module declarations
-`
+```
 
 ---
 
